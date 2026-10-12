@@ -1,0 +1,9 @@
+{"id": "faq-returns", "message": "Can I return an item after 30 days?", "intent": "question", "tools": [], "escalated": false, "reply_contains": ["30 days"]}
+{"id": "faq-payments", "message": "What payment methods do you accept?", "intent": "question", "tools": [], "escalated": false, "reply_contains": ["M-Pesa"]}
+{"id": "faq-shipping", "message": "How long does standard shipping take?", "intent": "question", "tools": [], "escalated": false}
+{"id": "track-order", "message": "Where is my order 1001?", "intent": "task", "tools": ["lookup_order"], "escalated": false}
+{"id": "track-missing-number", "message": "Where is my order?", "intent": "task", "tools": [], "escalated": false}
+{"id": "reset-password-gated", "message": "Please reset my password, my email is sam@example.com", "intent": "task", "tools": ["reset_password"], "escalated": false}
+{"id": "complaint-ticket", "message": "This is the worst service ever, my package arrived broken", "intent": "complaint", "tools": ["create_ticket"], "escalated": false}
+{"id": "smalltalk", "message": "hi there", "intent": "smalltalk", "tools": [], "escalated": false}
+{"id": "abstain-unknown-topic", "message": "Do you sell gift vouchers for Mars colonies?", "tools": ["create_ticket"], "escalated": true}
