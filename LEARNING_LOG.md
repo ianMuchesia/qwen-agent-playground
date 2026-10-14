@@ -47,8 +47,6 @@ JSON form; Python checks it and does the real work.
 - Approval comes from staff, not the customer (a scammer can type "yes" too). Anything auth/account = sensitive.
 - Only add approval where a mistake hurts (`reset_password` yes, `lookup_order` no). Too many approvals and people click yes without reading.
 - Evals use `deny_all`: nobody is watching, and tests must never trigger real actions.
-
-### 4. tools.py (finished)
 - `describe_tools()` turns the `TOOLS` list into text for the executor prompt. Add a tool -> Qwen sees it automatically.
 - Qwen only knows what the descriptions say: `priority (string)` never tells it the allowed values. Write good `description=`.
 - Every tool costs prompt space on every call.
