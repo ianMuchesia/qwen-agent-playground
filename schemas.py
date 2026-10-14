@@ -15,6 +15,9 @@ class RouteDecision(BaseModel):
     intent: Intent
     confidence: float = Field(ge=0, le=1, description="0 = guessing, 1 = certain")
     reason: str = Field(max_length=200)
+    # The router reads the long message once and hands forward the clean request,
+    # so search and the answerer never have to deal with the backstory.
+    search_query: str = Field(max_length=120, description="the customer's actual question or request in a few words")
 
 
 class Classification(BaseModel):

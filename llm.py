@@ -96,6 +96,13 @@ class MockLLM:
         return json.dumps(handler(text) if handler else {})
 
     def _RouteDecision(self, text: str) -> dict:
+        out = self._route(text)
+        # Fake "understanding": treat the last sentence as the real request.
+        last = re.split(r"(?<=[.!?])\s+", text.strip())[-1]
+        out["search_query"] = last.split(":")[-1].strip()[:120]
+        return out
+
+    def _route(self, text: str) -> dict:
         low = text.lower().strip(" !.?")
         if any(w in low for w in COMPLAINT_WORDS):
             return {"intent": "complaint", "confidence": 0.9, "reason": "negative words"}

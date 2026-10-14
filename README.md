@@ -77,7 +77,7 @@ Notes from going through the code, and where to pick up next: [LEARNING_LOG.md](
 
 ## Your first run with the real model
 
-Run `python run_evals.py`. **Expect some failures.** The mock passes 9/9 because it's rigged; a 3B model won't. That gap is the whole point: each failure is a lesson. Use `--verbose` to see the trace of every failing case and find the exact step that went wrong.
+Run `python run_evals.py`. **Expect some failures.** The mock passes every case because it's rigged; a 3B model won't. That gap is the whole point: each failure is a lesson. Use `--verbose` to see the trace of every failing case and find the exact step that went wrong.
 
 ## Not in here yet
 Conversation memory, durable workflows, security middleware, cost limits. Each can plug into this same code later.

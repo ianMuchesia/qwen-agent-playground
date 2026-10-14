@@ -26,7 +26,13 @@ You are the router for Acme Shop's customer support desk. Read the customer's me
 - unknown: none of the above, or you genuinely can't tell
 Set confidence from 0 to 1. Use a LOW number when the message is ambiguous; never pretend to be sure.
 Keep reason under 20 words.
+search_query: the customer's actual question or request in under 10 words. Drop names, greetings and backstory.
+Keep order numbers and emails. Example: "standard delivery time".
 """
+
+# Hard limit at the door: longer messages are refused before any model call,
+# so one pasted essay can't burn tokens across every agent.
+MAX_MESSAGE_CHARS = 2000
 
 CLASSIFIER_PROMPT = """
 You label support messages for Acme Shop.
@@ -94,6 +100,10 @@ class Playground:
     def handle(self, message: str) -> Result:
         trace = Trace()
         trace.add("input", message=message)
+        if len(message) > MAX_MESSAGE_CHARS:
+            trace.add("rejected", reason=f"message is {len(message)} chars, limit {MAX_MESSAGE_CHARS}")
+            reply = "That's a long message! Could you send just your question in a few sentences?"
+            return Result(reply, None, trace)
         intent = None
         cls = None
         try:
@@ -109,14 +119,19 @@ class Playground:
                 return Result(reply, intent, trace)
 
             cls = self.classifier.run(message, trace)
-            handler = {"question": self._answer, "task": self._execute, "complaint": self._complaint}[route.intent]
+            if route.intent == "question":
+                return self._answer(message, route.search_query, cls, trace, intent)
+            handler = {"task": self._execute, "complaint": self._complaint}[route.intent]
             return handler(message, cls, trace, intent)
         except AgentFailure as e:
             return self._escalate(message, trace, intent, str(e), cls)
 
     # ------------------------------------------------------------------ routes
-    def _answer(self, message: str, cls: Classification, trace: Trace, intent: str) -> Result:
-        hits = self.kb.search(message, k=3)
+    def _answer(self, message: str, query: str, cls: Classification, trace: Trace, intent: str) -> Result:
+        # Search and answer with the router's short query, not the full message.
+        # The full message is only kept for the human ticket if we escalate.
+        hits = self.kb.search(query, k=3)
+        trace.add("query", query=query)
         trace.add("retrieve", hits=[{"chunk": c.title, "score": round(s, 2)} for s, c in hits])
         good = [(s, c) for s, c in hits if s >= self.min_retrieval_score]
         if not good:
@@ -125,7 +140,7 @@ class Playground:
         sections = [Section("header", "SOURCES:", 5, priority=99)]
         for i, (_, c) in enumerate(good, 1):
             sections.append(Section(f"source {i}", f"[{i}] {c.title}\n{c.text}", self.doc_budget, priority=len(good) - i))
-        sections.append(Section("question", f"QUESTION: {message}", 150, priority=100))
+        sections.append(Section("question", f"QUESTION: {query}", 150, priority=100))
         prompt, report = assemble(sections, self.context_budget)
         trace.add("context", budget=self.context_budget, sections=report)
 

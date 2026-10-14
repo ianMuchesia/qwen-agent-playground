@@ -5,7 +5,7 @@ Reading order: schemas -> llm -> agents -> tools -> kb -> context -> orchestrato
 
 ## Session 1 (2026-10-12)
 
-**Setup done:** Ollama 0.40.3 installed, `qwen2.5:3b` pulled, `.venv` created, `run_evals.py --mock` passes 9/9.
+**Setup done:** Ollama 0.40.3 installed, `qwen2.5:3b` pulled, `.venv` created, `run_evals.py --mock` passes every case.
 Real-model evals not run yet.
 
 ### The big idea
@@ -41,13 +41,60 @@ JSON form; Python checks it and does the real work.
 - Ollama `format` makes the JSON valid; Pydantic checks the rules Ollama doesn't (e.g. `confidence` <= 1).
 - **Network errors are NOT retried.** `LLMError` goes straight to `main.py`. (Idea for later: retry with a wait.)
 
-### 4. tools.py (started)
+### 4. tools.py
 - The executor only **proposes** a tool. `run_tool` has 3 checks before anything runs:
   1. Does the tool exist? 2. Are the args valid? 3. If it needs approval, did **staff** say yes?
 - Approval comes from staff, not the customer (a scammer can type "yes" too). Anything auth/account = sensitive.
 - Only add approval where a mistake hurts (`reset_password` yes, `lookup_order` no). Too many approvals and people click yes without reading.
 - Evals use `deny_all`: nobody is watching, and tests must never trigger real actions.
 
+### 4. tools.py (finished)
+- `describe_tools()` turns the `TOOLS` list into text for the executor prompt. Add a tool -> Qwen sees it automatically.
+- Qwen only knows what the descriptions say: `priority (string)` never tells it the allowed values. Write good `description=`.
+- Every tool costs prompt space on every call.
+- Executor = turns a request into an action. It only **chooses** (tool + args, or `"none"`); `run_tool` checks and runs it.
+
+## Session 2 (2026-10-14)
+
+### Who decides what
+- **Qwen** decides: route, labels, which tool, the wording.
+- **Code** decides: is the route trusted (confidence >= 0.6), attach sources or not (only on the question route),
+  run the tool or not (3 checks), escalate or not.
+- Qwen picks the route **once**; after that the code follows a fixed plan for that route.
+- One message = several Qwen calls: smalltalk 2, question 3, task 4, complaint 3, unsure 1 (+1 per retry).
+- An agent = **prompt** (how to think) + **schema** (what it's allowed to answer) + **code** (what happens next).
+
+### 5. kb.py: the R in RAG
+- Cuts the help articles at `##` headings (12 chunks), scores each against the question with BM25 (word matching),
+  returns the top 3. Rare words count more. Scores below 2.0 -> human.
+- Weakness: matches words, not meaning ("shipping" vs "delivery"). Fix later: embeddings + BM25 = hybrid search.
+  FAISS isn't needed for 12 chunks.
+
+### 6. context.py: make it fit
+- Only applies right before the **answerer**. Total budget 600 tokens, question max 150 (~100 words),
+  each source max 250. 1 token ~ 4 characters (a guess).
+- Fills in priority order: question first, then best source, weakest source cut first.
+- Keeps the **start** of a text and cuts the **end**.
+
+### The long-message bug (found with real Qwen) and the fix
+- A long story with the question at the end: router + classifier understood it, but **search** used every word
+  (found the wrong articles) and **context.py** cut off the real question. The safety nets worked (no made-up answer,
+  sent to a human), but the customer got no help.
+- Root cause: the router understood the question but only passed forward one word ("question").
+  **Lesson: each agent should pass forward the clean result of its work, not just a label.**
+- Fix: router now also returns `search_query` ("standard delivery time"). Search and the answerer use it;
+  the full message is kept only for the human ticket. Now it finds "Delivery times" and answers "3 to 5 business days".
+- Added a limit at the door: messages over 2,000 characters are refused with 0 model calls.
+- Added eval `faq-long-story` so it can't come back.
+- context.py is now a safety net (a seatbelt): it rarely needs to cut.
+
+### Why limit length
+- Small models get worse with long input. Ollama also has a window (`num_ctx`) and silently cuts the **start**
+  (our instructions) if the prompt is too big.
+- Paid models charge per token, and the message is resent to every agent.
+- Slower: 15-30 s per Qwen call on this PC's CPU.
+- Limit smartly: compress once early (one agent summarizes), cut only as a last resort.
+
 ## Next session
-- Finish tools.py (`describe_tools()` feeding the executor prompt), then kb.py + `data/kb/`.
+- Try merging router + classifier into one agent (reads the message once, saves ~15 s). Use the evals to decide.
 - Run `python run_evals.py --verbose` on real Qwen and go through each failure.
