@@ -93,6 +93,39 @@ JSON form; Python checks it and does the real work.
 - Slower: 15-30 s per Qwen call on this PC's CPU.
 - Limit smartly: compress once early (one agent summarizes), cut only as a last resort.
 
-## Next session
-- Try merging router + classifier into one agent (reads the message once, saves ~15 s). Use the evals to decide.
-- Run `python run_evals.py --verbose` on real Qwen and go through each failure.
+## Session 3 (2026-10-15 and 2026-10-22): first real-model evals
+
+### First run on qwen2.5:3b: 7/10 (32 calls, 238 s)
+| Test | What went wrong |
+|---|---|
+| faq-returns | router called a question a **complaint** |
+| abstain-unknown-topic | router called it a **complaint** (0.9 confidence!), then the responder **made up** a voucher policy |
+| track-missing-number | executor **made up** order number 1234 (the format check passed: it's 4 digits) |
+
+### Lessons
+- **Look for the pattern, not single failures.** 2 of 3 were the router over-using "complaint". One prompt fix covers both.
+- **Small models make things up** (hallucinate). They write what *sounds* likely: "1234" sounds like an order number.
+  Defences: give the facts, give a way out (`none`, `grounded: false`), **check in code**, fixed sentences where
+  the answer never changes, evals.
+- **Prompt rules are not enough.** The prompt said "never make up order numbers"; Qwen did anyway.
+- **Self-reported confidence is unreliable.** Qwen said 0.9 while wrong, so the 0.6 threshold couldn't help.
+- **Right answer, wrong reason = still a failure.** On the complaint path Qwen guessed the return policy without
+  seeing the article. The guess was right but missed "except for damaged items". The evals check the *path*, not just the reply.
+- A format check (4 digits) can't tell a real value from an invented one.
+
+### Fixes -> 10/10
+1. Router prompt: `question` includes "can I...?" and "do you sell / offer / have X?";
+   `complaint` ONLY when something already went wrong (late, broken, wrong charge).
+2. Executor guard in `_execute`: if a tool arg isn't in the customer's message, treat it as `none` and ask for it.
+
+### Logging
+- Every eval run is saved to `evals/runs/<time>_<model>.jsonl`: full trace for every case, passed or failed.
+- `run_evals.py --show-all` prints every trace. Use it to spot "barely passing" cases (confidence near 0.6)
+  and slow agents (`ms`), and to compare models case by case.
+
+## Ideas for later
+- Merge router + classifier into one agent (reads the message once, saves ~15 s). Let the evals decide.
+- Compare models: `run_evals.py --model qwen2.5:7b`, then compare pass rate, calls and time.
+- A different model per agent: small for router/classifier, bigger for the answerer, frontier for escalation.
+- Fixed sentence for complaint replies instead of the responder (can't make things up, one fewer call).
+- Hybrid search (BM25 + embeddings with `nomic-embed-text`).

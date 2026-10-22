@@ -19,9 +19,9 @@ from tools import describe_tools, run_tool
 
 ROUTER_PROMPT = """
 You are the router for Acme Shop's customer support desk. Read the customer's message and pick exactly one intent:
-- question: they want information (policies, prices, how-to, delivery times)
+- question: they want information, including "can I...?" and "do you sell / offer / have X?"
 - task: they want something DONE on their account or order (track an order, reset a password)
-- complaint: they are unhappy about something that happened and want it fixed
+- complaint: they are unhappy about something that happened and want it fixed,  ONLY when they describe something that already went wrong (late, broken, wrong charge)
 - smalltalk: greetings, thanks, chit-chat with no request
 - unknown: none of the above, or you genuinely can't tell
 Set confidence from 0 to 1. Use a LOW number when the message is ambiguous; never pretend to be sure.
@@ -153,6 +153,11 @@ class Playground:
 
     def _execute(self, message: str, cls: Classification, trace: Trace, intent: str) -> Result:
         choice = self.executor.run(message, trace)
+        # Small models invent details. Only accept args the customer actually wrote.
+        if choice.tool != "none" and any(v not in message for v in choice.args.values()):
+            trace.add("guard", blocked=choice.args, reason="arg not found in the customer's message")
+            choice = choice.model_copy(update={"tool": "none", "args": {}})
+
         if choice.tool == "none":
             reply = ("I can help with that, but I need a bit more detail, like your 4-digit order number "
                      "or the email on your account.")
